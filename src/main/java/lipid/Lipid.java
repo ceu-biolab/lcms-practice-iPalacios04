@@ -1,8 +1,11 @@
 package lipid;
 
 import java.util.Objects;
+import adduct.MassTransformation;
+
 
 public class Lipid {
+
     private final int compoundId;
     private final String name;
     private final String formula;

@@ -4,6 +4,10 @@ import java.util.Collections;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import adduct.AdductList;
+import java.util.*;
+import java.util.Map.Entry;
+import adduct.MassTransformation;
 
 /**
  * Class to represent the annotation over a lipid
@@ -15,7 +19,7 @@ public class Annotation {
     private final double intensity; // intensity of the most abundant peak in the groupedPeaks
     private final double rtMin;
     private final IoniationMode ionizationMode;
-    private String adduct; // !!TODO The adduct will be detected based on the groupedSignals
+    private String adduct;
     private final Set<Peak> groupedSignals;
     private int score;
     private int totalScoresApplied;
@@ -46,11 +50,13 @@ public class Annotation {
         this.rtMin = retentionTime;
         this.intensity = intensity;
         this.ionizationMode = ionizationMode;
-        // !!TODO This set should be sorted according to help the program to deisotope the signals plus detect the adduct
         this.groupedSignals = new TreeSet<>(groupedSignals);
         this.score = 0;
         this.totalScoresApplied = 0;
+
+        detectAdduct(DEFAULT_TOLERANCE);
     }
+
 
     public Lipid getLipid() {
         return lipid;
@@ -62,10 +68,6 @@ public class Annotation {
 
     public double getRtMin() {
         return rtMin;
-    }
-
-    public String getAdduct() {
-        return adduct;
     }
 
     public void setAdduct(String adduct) {
@@ -85,6 +87,7 @@ public class Annotation {
     }
 
 
+
     public int getScore() {
         return score;
     }
@@ -100,12 +103,17 @@ public class Annotation {
     }
 
     /**
-     * @return The normalized score between 0 and 1 that consists on the final number divided into the times that the rule
-     * has been applied.
+     * @return El score normalizado entre -1.0 y 1.0.
+     *         Si no se ha aplicado ninguna regla, devuelve 0.0.
      */
     public double getNormalizedScore() {
-        return (double) this.score / this.totalScoresApplied;
+        if (totalScoresApplied == 0) {
+            return 0.0;
+        }
+        return (double) score / totalScoresApplied;
     }
+
+
 
     @Override
     public boolean equals(Object o) {
@@ -127,6 +135,71 @@ public class Annotation {
         return String.format("Annotation(%s, mz=%.4f, RT=%.2f, adduct=%s, intensity=%.1f, score=%d)",
                 lipid.getName(), mz, rtMin, adduct, intensity, score);
     }
+    private static final double DEFAULT_TOLERANCE = 0.01;
 
-    // !!TODO Detect the adduct with an algorithm or with drools, up to the user.
+    /**
+     * Detecta el aducto que mejor “explica” el conjunto de picos agrupados.
+     * Para cada candidato X:
+     *   1) infiere la masa M con getMonoisotopicMassFromMZ(mzExp, X)
+     *   2) simula cada pico con getMZFromMonoisotopicMass(M, Y) para todos Y
+     *   3) cuenta cuántos picos reales quedan explicados (± tolDa)
+     * El X que más picos explica es el aducto detectado.
+     *
+     * @param tolDa tolerancia en Da para considerar un pico “explicado”
+     */
+    private void detectAdduct(double tolDa) {
+        double mzExp = this.mz;
+        Map<String,Double> candidatos = ionizationMode == IoniationMode.POSITIVE
+                ? AdductList.MAPMZPOSITIVEADDUCTS
+                : AdductList.MAPMZNEGATIVEADDUCTS;
+
+        String bestAdduct = defaultAdduct();
+        int    bestScore  = -1;
+
+        for (String x : candidatos.keySet()) {
+            // 1) infiero la masa neutra M a partir del pico mzExp y el aducto de prueba X
+            double neutralMass = MassTransformation
+                    .getMonoisotopicMassFromMZ(mzExp, x);
+
+            int score = 0;
+            // 2) recorro cada pico agrupado
+            for (Peak p : groupedSignals) {
+                double pMz = p.getMz();
+                // salto el propio mzExp
+                if (Math.abs(pMz - mzExp) < 1e-8) {
+                    continue;
+                }
+                // 3) compruebo si **algún** aducto Y explica este pico
+                for (String y : candidatos.keySet()) {
+                    double mzTheoY = MassTransformation
+                            .getMZFromMonoisotopicMass(neutralMass, y);
+                    if (Math.abs(mzTheoY - pMz) <= tolDa) {
+                        score++;
+                        break;
+                    }
+                }
+            }
+            // 4) me quedo con el X que más picos explica
+            if (score > bestScore) {
+                bestScore  = score;
+                bestAdduct = x;
+            }
+        }
+
+        this.adduct = bestAdduct;
+    }
+
+    public String getAdduct() {
+        return adduct;
+    }
+
+    /** Devuelve el aducto “por defecto” según el modo de ionización */
+    private String defaultAdduct() {
+        if (ionizationMode == IoniationMode.POSITIVE) {
+            return AdductList.MAPMZPOSITIVEADDUCTS.keySet().iterator().next();
+        } else {
+            return AdductList.MAPMZNEGATIVEADDUCTS.keySet().iterator().next();
+        }
+    }
+
 }

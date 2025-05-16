@@ -1,27 +1,113 @@
-
 package lipid;
 
 unit LipidScoreUnit;
 
-// TODO Include here rules and queries to fulfill the practice requirements
+import lipid.Annotation;
+import lipid.Lipid;
 
+// ——————————————————————————————
+// Función auxiliar para ordenar tipos: PG < PE < PI < PA < PS < PC
+// ——————————————————————————————
+function int typeRank(String t) {
+    if ("PG".equals(t)) return 1;
+    if ("PE".equals(t)) return 2;
+    if ("PI".equals(t)) return 3;
+    if ("PA".equals(t)) return 4;
+    if ("PS".equals(t)) return 5;
+    if ("PC".equals(t)) return 6;
+    return 0;
+}
 
-// This is one example of rules that only prints the factorial combination of all pairs eliminating the A-A combination.
-// !! TODO This rule does not include the lipid type, you shall add it.
-// !! TODO Rule that states that the same lipid type with the same number of double bonds and a higher number of carbons should have a higher RT
-// !! TODO
-rule "Score 1 for lipid pair with increasing RT and carbon count"
+// —————— 1) EVIDENCIA POSITIVA ——————
+
+// 1.a) Mismo tipo, mismas dobles, más carbonos ⇒ RT1 < RT2
+rule "Positive: carbon count"
 when
-    $a1 : /annotations [$rt1 : rtMin, $carbonCount1 : lipid.getCarbonCount(), $doubleBondCount : lipid.getDoubleBondsCount()]
-    $a2 : /annotations [this!= $a1, lipid.getDoubleBondsCount() == $doubleBondCount,
-    rtMin > $rt1, lipid.getCarbonCount() > $carbonCount1]
+    $a1 : /annotations[ $rt1 : rtMin, $c1 : lipid.getCarbonCount(), $db : lipid.getDoubleBondsCount() ]
+    $a2 : /annotations[ this != $a1,
+                        lipid.getDoubleBondsCount() == $db,
+                        lipid.getCarbonCount() > $c1,
+                        $rt2 : rtMin,
+                        eval($rt1 < $rt2) ]
 then
-    // in this case, the only change is the addition of the score, but the fact does not change so we do not break the principle of refractoriness
     $a1.addScore(1);
     $a2.addScore(1);
-    // !! TODO ONLY FOR DEBUGGING
-    System.out.println("Scored 1 for annotations: " + $a1 + " and " + $a2);
 end
 
+// 1.b) Mismo tipo, mismo C, más dobles ⇒ RT1 > RT2
+rule "Positive: double bonds"
+when
+    $a1 : /annotations[ $rt1 : rtMin, $c : lipid.getCarbonCount(), $db1 : lipid.getDoubleBondsCount(), $t : lipid.getLipidType() ]
+    $a2 : /annotations[ this != $a1,
+                        lipid.getLipidType() == $t,
+                        lipid.getCarbonCount() == $c,
+                        lipid.getDoubleBondsCount() > $db1,
+                        $rt2 : rtMin,
+                        eval($rt1 > $rt2) ]
+then
+    $a1.addScore(1);
+    $a2.addScore(1);
+end
 
-// !! TODO NEXT RULE: Negative evidence. If the RT follows the opposite order than the previous one, then the addScore should be -1.
+// 1.c) Mismo C y mismas dobles, distinto tipo ⇒ typeRank lógicamente ordena RT
+rule "Positive: type order"
+when
+    $a1 : /annotations[ $rt1 : rtMin, $c : lipid.getCarbonCount(), $db : lipid.getDoubleBondsCount(), $t1 : lipid.getLipidType() ]
+    $a2 : /annotations[ this != $a1,
+                        lipid.getCarbonCount() == $c,
+                        lipid.getDoubleBondsCount() == $db,
+                        $t2 : lipid.getLipidType(),
+                        eval(typeRank($t1) < typeRank($t2)),
+                        $rt2 : rtMin,
+                        eval($rt1 < $rt2) ]
+then
+    $a1.addScore(1);
+    $a2.addScore(1);
+end
+
+// —————— 2) EVIDENCIA NEGATIVA ——————
+
+// 2.a) Mismo tipo, mismas dobles, más carbonos, pero RT1 > RT2
+rule "Negative: carbon count"
+when
+    $a1 : /annotations[ $rt1 : rtMin, $c1 : lipid.getCarbonCount(), $db : lipid.getDoubleBondsCount() ]
+    $a2 : /annotations[ this != $a1,
+                        lipid.getDoubleBondsCount() == $db,
+                        lipid.getCarbonCount() > $c1,
+                        $rt2 : rtMin,
+                        eval($rt1 > $rt2) ]
+then
+    $a1.addScore(-1);
+    $a2.addScore(-1);
+end
+
+// 2.b) Mismo tipo, mismo C, más dobles, pero RT1 < RT2
+rule "Negative: double bonds"
+when
+    $a1 : /annotations[ $rt1 : rtMin, $c : lipid.getCarbonCount(), $db1 : lipid.getDoubleBondsCount(), $t : lipid.getLipidType() ]
+    $a2 : /annotations[ this != $a1,
+                        lipid.getLipidType() == $t,
+                        lipid.getCarbonCount() == $c,
+                        lipid.getDoubleBondsCount() > $db1,
+                        $rt2 : rtMin,
+                        eval($rt1 < $rt2) ]
+then
+    $a1.addScore(-1);
+    $a2.addScore(-1);
+end
+
+// 2.c) Mismo C y mismas dobles, distinto tipo, pero RT1 > RT2
+rule "Negative: type order"
+when
+    $a1 : /annotations[ $rt1 : rtMin, $c : lipid.getCarbonCount(), $db : lipid.getDoubleBondsCount(), $t1 : lipid.getLipidType() ]
+    $a2 : /annotations[ this != $a1,
+                        lipid.getCarbonCount() == $c,
+                        lipid.getDoubleBondsCount() == $db,
+                        $t2 : lipid.getLipidType(),
+                        eval(typeRank($t1) < typeRank($t2)),
+                        $rt2 : rtMin,
+                        eval($rt1 > $rt2) ]
+then
+    $a1.addScore(-1);
+    $a2.addScore(-1);
+end

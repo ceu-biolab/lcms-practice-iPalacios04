@@ -18,7 +18,6 @@ public class Main {
             instance.fire();
             // TODO INTRODUCE THE QUERIES IF DESIRED
 
-
         } finally {
             instance.close();
         }
