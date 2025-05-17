@@ -72,4 +72,23 @@ public class AdductDetectionTest {
         assertEquals( "Adduct inferred from lowest mz in group","[M+H]+", annotation.getAdduct());
     }
 
+    @Test
+    public void shouldDetectAdductBasedOnMzk() {
+
+        // Given two peaks with ~21.98 Da difference (e.g., [M+H]+ and [M+Na]+)
+        Peak mH = new Peak(700.500, 100000.0); // [M+H]+
+        Peak mk = new Peak(738.4564, 80000.0);  // [M+k]+
+        Lipid lipid = new Lipid(1, "PC 34:1", "C42H82NO8P", "PC", 34, 1);
+
+        double annotationRT = 6.5d;
+        Annotation annotation = new Annotation(lipid, mk.getMz(), mk.getIntensity(), annotationRT, IoniationMode.POSITIVE, Set.of(mH, mk));
+
+        //annotation.identifyAdduct();
+
+        assertNotNull("[M+K]+ should be detected", annotation.getAdduct());
+        assertEquals( "Adduct inferred from lowest mz in group","[M+K]+", annotation.getAdduct());
+        System.out.println(annotation.getAdduct());
+
+    }
+
 }
